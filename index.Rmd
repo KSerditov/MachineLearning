@@ -1,0 +1,79 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Konstantin Serditov"
+date: "14 February 2016"
+output: html_document
+---
+
+# Problem statement
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. For this project data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants is provided. Participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways. The goal is to predict the manner in which they did the exercise.
+
+# Data loading and feature extraction
+
+Setup initial parameters and load libraries.
+```{r, message=FALSE}
+options(warn=-1) #disable warning messages
+Sys.setlocale("LC_TIME", "English") #set English locale
+setwd("D:/rprog/ml") #set home directory - raw data is already downloaded there
+set.seed(4882) #set.seed for reproducibility
+library(caret)
+library(lubridate)
+training <- read.csv("./pml-training.csv", na.strings=c("","NA"))
+testing <- read.csv("./pml-testing.csv", na.strings=c("","NA"))
+```
+
+Check percent of values with existing NA values.
+```{r}
+colNAsum <- sapply(training, function(x) sum(is.na(x)))
+colNAsum[colNAsum!=0]/nrow(training)
+```
+
+If NA exists in column, 98% of values are NA - let's drop these columns from further consideration
+```{r}
+dropnames <- names(colNAsum[colNAsum!=0])
+training <- training[, ! names(training) %in% dropnames, drop = F]
+testing <- testing[, ! names(testing) %in% dropnames, drop = F]
+```
+
+There are three timestamp variables: raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp. Full day doesn't seem related to outcome, but it may depend on weekday, hour and minute. Exctract them from cvtd_timestamp and drop original variables.
+```{r}
+training$cvtd_timestamp <- as.POSIXct(training$cvtd_timestamp, format="%d/%m/%Y %H:%M")
+training$weekday <- as.factor(weekdays(training$cvtd_timestamp))
+training$hour <- as.factor(strftime(training$cvtd_timestamp, format="%H"))
+training$minute <- as.factor(strftime(training$cvtd_timestamp, format="%M"))
+
+testing$cvtd_timestamp <- as.POSIXct(testing$cvtd_timestamp, format="%d/%m/%Y %H:%M")
+testing$weekday <- as.factor(weekdays(testing$cvtd_timestamp))
+testing$hour <- as.factor(strftime(testing$cvtd_timestamp, format="%H"))
+testing$minute <- as.factor(strftime(testing$cvtd_timestamp, format="%M"))
+
+dropnames <- c("raw_timestamp_part_1","raw_timestamp_part_2","cvtd_timestamp")
+training <- training[, ! names(training) %in% dropnames, drop = F]
+testing <- testing[, ! names(testing) %in% dropnames, drop = F]
+```
+
+Drop also X variable since it is just row index:
+```{r}
+dropnames <- c("X")
+training <- training[, ! names(training) %in% dropnames, drop = F]
+testing <- testing[, ! names(testing) %in% dropnames, drop = F]
+```
+
+# Fit model
+
+Use 10-fold cross validation and random forests to create the model.
+```{r}
+trctrl <- trainControl(method="cv", number=10, verboseIter = FALSE, savePredictions = "final")
+model <- train(classe ~ ., data = training, trControl = trctrl, method = "parRF")
+```
+
+# Model errors estimate
+```{r}
+model$finalModel
+```
+Model shows good accuracy: 99.87%.
+
+# Predict values for test data set
+```{r}
+predict(model, testing)
+```
